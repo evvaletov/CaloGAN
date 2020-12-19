@@ -106,7 +106,7 @@ if __name__ == '__main__':
     from keras.optimizers import Adam
     from keras.utils.generic_utils import Progbar
 
-    K.set_image_dim_ordering('tf')
+    K.common.set_image_dim_ordering('tf')
 
     from ops import (minibatch_discriminator, minibatch_output_shape, Dense3D,
                      calculate_energy, scale, inpainting_attention)
