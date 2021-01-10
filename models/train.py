@@ -99,12 +99,24 @@ if __name__ == '__main__':
 
     # delay the imports so running train.py -h doesn't take 5,234,807 years
     import keras.backend as K
+    # EV 10-Jan-2021 Import Horovod
+    import horovod.keras as hvd
+    import tensorflow as tf
     from keras.layers import (Activation, AveragePooling2D, Dense, Embedding,
                               Flatten, Input, Lambda, UpSampling2D)
     from keras.layers.merge import add, concatenate, multiply
     from keras.models import Model
     from keras.optimizers import Adam
     from keras.utils.generic_utils import Progbar
+
+    # EV 10-Jan-2021: initialize Horovod
+    hvd.init()
+
+    # EV 10-Jan-2021: Horovod: pin GPU to be used to process local rank (one GPU per process)
+    config = tf.ConfigProto()
+    config.gpu_options.allow_growth = True
+    config.gpu_options.visible_device_list = str(hvd.local_rank())
+    K.set_session(tf.Session(config=config))
 
     K.common.set_image_dim_ordering('tf')
 
@@ -127,17 +139,27 @@ if __name__ == '__main__':
     hander.setFormatter(formatter)
     logger.addHandler(hander)
 
-    nb_epochs = parse_args.nb_epochs
+    # EV 10-Jan-2021 Adjust number of epochs
+    #nb_epochs = parse_args.nb_epochs
+    nb_epochs = int(parse_args.nb_epochs / hvd.size())
+
     batch_size = parse_args.batch_size
     latent_size = parse_args.latent_size
     verbose = parse_args.prog_bar
     no_attn = parse_args.no_attn
 
-    disc_lr = parse_args.disc_lr
-    gen_lr = parse_args.gen_lr
+    # EV 10-Jan-2021 Adjust the learning rate
+    #disc_lr = parse_args.disc_lr
+    #gen_lr = parse_args.gen_lr
+    disc_lr = parse_args.disc_lr * hvd.size()
+    gen_lr = parse_args.gen_lr * hvd.size()
+
     adam_beta_1 = parse_args.adam_beta
 
     yaml_file = parse_args.dataset
+
+    logger.debug('hvd.size() = {}'.format(hvd.size()))
+    print('hvd.size() = {}'.format(hvd.size()))
 
     logger.debug('parameter configuration:')
 
@@ -293,7 +315,9 @@ if __name__ == '__main__':
     discriminator = Model(calorimeter + [input_energy], discriminator_outputs)
 
     discriminator.compile(
-        optimizer=Adam(lr=disc_lr, beta_1=adam_beta_1),
+        # EV 10-Jan-2021: add Horovod Distributed Optimizer
+        #optimizer=Adam(lr=disc_lr, beta_1=adam_beta_1),
+        optimizer=hvd.DistributedOptimizer(Adam(lr=disc_lr, beta_1=adam_beta_1)),
         loss=discriminator_losses
     )
 
@@ -352,7 +376,9 @@ if __name__ == '__main__':
     generator = Model(generator_inputs, generator_outputs)
 
     generator.compile(
-        optimizer=Adam(lr=gen_lr, beta_1=adam_beta_1),
+        # EV 10-Jan-2021: add Horovod Distributed Optimizer
+        #optimizer=Adam(lr=gen_lr, beta_1=adam_beta_1),
+        optimizer=hvd.DistributedOptimizer(Adam(lr=gen_lr, beta_1=adam_beta_1)),
         loss='binary_crossentropy'
     )
 
@@ -364,9 +390,24 @@ if __name__ == '__main__':
 
     combined = Model(generator_inputs, combined_outputs, name='combined_model')
     combined.compile(
-        optimizer=Adam(lr=gen_lr, beta_1=adam_beta_1),
+        # EV 10-Jan-2021: add Horovod Distributed Optimizer
+        #optimizer=Adam(lr=gen_lr, beta_1=adam_beta_1),
+        optimizer=hvd.DistributedOptimizer(Adam(lr=gen_lr, beta_1=adam_beta_1)),
         loss=discriminator_losses
     )
+
+    # EV 10-Jan-2021: Broadcast initial variable states from rank 0 to all other processes
+    gcb =hvd.callbacks.BroadcastGlobalVariablesCallback(0)
+    dcb =hvd.callbacks.BroadcastGlobalVariablesCallback(0)
+    ccb =hvd.callbacks.BroadcastGlobalVariablesCallback(0)
+    gcb.set_model( generator )
+    dcb.set_model( discriminator )
+    ccb.set_model( combined )
+
+
+    gcb.on_train_begin()
+    dcb.on_train_begin()
+    ccb.on_train_begin()
 
     logger.info('commencing training')
 
@@ -477,8 +518,10 @@ if __name__ == '__main__':
             epoch + 1, np.mean(epoch_disc_loss, axis=0)))
 
         # save weights every epoch
-        generator.save_weights('{0}{1:03d}.hdf5'.format(parse_args.g_pfx, epoch),
+        # EV 10-Jan-2021:this needs to done only on one process. overwise each worker is writing it
+        if hvd.rank()==0:
+            generator.save_weights('{0}{1:03d}.hdf5'.format(parse_args.g_pfx, epoch),
                                overwrite=True)
 
-        discriminator.save_weights('{0}{1:03d}.hdf5'.format(parse_args.d_pfx, epoch),
+            discriminator.save_weights('{0}{1:03d}.hdf5'.format(parse_args.d_pfx, epoch),
                                    overwrite=True)
