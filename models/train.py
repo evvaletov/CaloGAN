@@ -98,7 +98,9 @@ if __name__ == '__main__':
     parse_args = parser.parse_args()
 
     # delay the imports so running train.py -h doesn't take 5,234,807 years
-    import keras.backend as K
+    # from tf.compat.v1.keras import backend as K # TensofFlow 2.X
+    import keras.backend as K # TensorFlow 1.X
+    #import tensorflow.keras.backend as K
     # EV 10-Jan-2021 Import Horovod
     import horovod.keras as hvd
     import tensorflow as tf
@@ -113,17 +115,20 @@ if __name__ == '__main__':
     hvd.init()
 
     # EV 10-Jan-2021: Horovod: pin GPU to be used to process local rank (one GPU per process)
-    config = tf.ConfigProto()
+    try: 
+        config = tf.ConfigProto() # TensorFlow 1.X
+    except:
+        config = tf.compat.v1.ConfigProto() # TensorFlow 2.X
     config.gpu_options.allow_growth = True
     config.gpu_options.visible_device_list = str(hvd.local_rank())
     K.set_session(tf.Session(config=config))
 
     K.common.set_image_dim_ordering('tf')
 
-    from ops import (minibatch_discriminator, minibatch_output_shape, Dense3D,
+    from models.ops import (minibatch_discriminator, minibatch_output_shape, Dense3D,
                      calculate_energy, scale, inpainting_attention)
 
-    from architectures import build_generator, build_discriminator
+    from models.architectures import build_generator, build_discriminator
 
     # batch, latent size, and whether or not to be verbose with a progress bar
 
@@ -182,8 +187,12 @@ if __name__ == '__main__':
             raise exc
     nb_classes = len(s.keys())
     logger.info('{} particle types found.'.format(nb_classes))
-    for name, pth in s.iteritems():
-        logger.debug('class {} <= {}'.format(name, pth))
+    if sys.version_info[0] < 3: # Python 2.X
+        for name, pth in s.iteritems():
+            logger.debug('class {} <= {}'.format(name, pth))
+    else: # Python 3.X
+        for name, pth in s.items():
+            logger.debug('class {} <= {}'.format(name, pth))
 
     def _load_data(particle, datafile):
 
@@ -212,11 +221,18 @@ if __name__ == '__main__':
 
     logger.debug('loading data from {} files'.format(nb_classes))
 
-    first, second, third, y, energy, sizes = [
-        np.concatenate(t) for t in [
-            a for a in zip(*[_load_data(p, f) for p, f in s.iteritems()])
+    if sys.version_info[0] < 3: # Python 2.X
+        first, second, third, y, energy, sizes = [
+            np.concatenate(t) for t in [
+                a for a in zip(*[_load_data(p, f) for p, f in s.iteritems()])
+            ]
         ]
-    ]
+    else: # Python 3.X
+        first, second, third, y, energy, sizes = [
+            np.concatenate(t) for t in [
+                a for a in zip(*[_load_data(p, f) for p, f in s.items()])
+            ]
+        ]
 
     # TO-DO: check that all sizes match, so I could be taking any of them
     sizes = sizes[:6].tolist()
@@ -375,6 +391,8 @@ if __name__ == '__main__':
 
     generator = Model(generator_inputs, generator_outputs)
 
+    discriminator.trainable = False
+    
     generator.compile(
         # EV 10-Jan-2021: add Horovod Distributed Optimizer
         #optimizer=Adam(lr=gen_lr, beta_1=adam_beta_1),
@@ -382,7 +400,6 @@ if __name__ == '__main__':
         loss='binary_crossentropy'
     )
 
-    discriminator.trainable = False
 
     combined_outputs = discriminator(
         generator(generator_inputs) + [input_energy]

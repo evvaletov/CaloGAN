@@ -15,7 +15,7 @@ from keras.layers.merge import concatenate, multiply
 import numpy as np
 
 
-from ops import (minibatch_discriminator, minibatch_output_shape,
+from models.ops import (minibatch_discriminator, minibatch_output_shape,
                  Dense3D, sparsity_level, sparsity_output_shape)
 
 
