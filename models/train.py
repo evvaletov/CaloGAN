@@ -144,6 +144,9 @@ if __name__ == '__main__':
     hander.setFormatter(formatter)
     logger.addHandler(hander)
 
+    nb_epochs = parse_args.nb_epochs
+    #nb_epochs = int(parse_args.nb_epochs / hvd.size())
+
     batch_size = parse_args.batch_size
     latent_size = parse_args.latent_size
     verbose = parse_args.prog_bar
@@ -160,7 +163,11 @@ if __name__ == '__main__':
     yaml_file = parse_args.dataset
 
     logger.debug('hvd.size() = {}'.format(hvd.size()))
+
     print('hvd.size() = {}'.format(hvd.size()))
+    print('hvd.local_size() = {}'.format(hvd.local_size()))
+    print('hvd.rank() = {}'.format(hvd.rank()))
+    print('hvd.local_rank() = {}'.format(hvd.local_rank()))
 
     logger.debug('parameter configuration:')
 
