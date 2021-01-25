@@ -144,10 +144,6 @@ if __name__ == '__main__':
     hander.setFormatter(formatter)
     logger.addHandler(hander)
 
-    # EV 10-Jan-2021 Adjust number of epochs
-    #nb_epochs = parse_args.nb_epochs
-    nb_epochs = int(parse_args.nb_epochs / hvd.size())
-
     batch_size = parse_args.batch_size
     latent_size = parse_args.latent_size
     verbose = parse_args.prog_bar
