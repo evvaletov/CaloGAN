@@ -110,6 +110,7 @@ if __name__ == '__main__':
     from keras.models import Model
     from keras.optimizers import Adam
     from keras.utils.generic_utils import Progbar
+    from keras.callbacks import CallbackList
 
     # EV 10-Jan-2021: initialize Horovod
     hvd.init()
@@ -144,9 +145,8 @@ if __name__ == '__main__':
     hander.setFormatter(formatter)
     logger.addHandler(hander)
 
-    # EV 10-Jan-2021 Adjust number of epochs
-    #nb_epochs = parse_args.nb_epochs
-    nb_epochs = int(parse_args.nb_epochs / hvd.size())
+    nb_epochs = parse_args.nb_epochs
+    #nb_epochs = int(parse_args.nb_epochs / hvd.size())
 
     batch_size = parse_args.batch_size
     latent_size = parse_args.latent_size
@@ -156,15 +156,19 @@ if __name__ == '__main__':
     # EV 10-Jan-2021 Adjust the learning rate
     #disc_lr = parse_args.disc_lr
     #gen_lr = parse_args.gen_lr
-    disc_lr = parse_args.disc_lr * hvd.size()
-    gen_lr = parse_args.gen_lr * hvd.size()
+    disc_lr = parse_args.disc_lr * 1
+    gen_lr = parse_args.gen_lr * 1
 
     adam_beta_1 = parse_args.adam_beta
 
     yaml_file = parse_args.dataset
 
     logger.debug('hvd.size() = {}'.format(hvd.size()))
+
     print('hvd.size() = {}'.format(hvd.size()))
+    print('hvd.local_size() = {}'.format(hvd.local_size()))
+    print('hvd.rank() = {}'.format(hvd.rank()))
+    print('hvd.local_rank() = {}'.format(hvd.local_rank()))
 
     logger.debug('parameter configuration:')
 
@@ -414,9 +418,12 @@ if __name__ == '__main__':
     )
 
     # EV 10-Jan-2021: Broadcast initial variable states from rank 0 to all other processes
-    gcb =hvd.callbacks.BroadcastGlobalVariablesCallback(0)
-    dcb =hvd.callbacks.BroadcastGlobalVariablesCallback(0)
-    ccb =hvd.callbacks.BroadcastGlobalVariablesCallback(0)
+    # EV 06-Fev-2021: add hvd.callbacks.MetricAverageCallback()
+    
+    gcb = CallbackList([hvd.callbacks.BroadcastGlobalVariablesCallback(0), hvd.callbacks.MetricAverageCallback()])
+    dcb = CallbackList([hvd.callbacks.BroadcastGlobalVariablesCallback(0), hvd.callbacks.MetricAverageCallback()])
+    ccb = CallbackList([hvd.callbacks.BroadcastGlobalVariablesCallback(0), hvd.callbacks.MetricAverageCallback()])
+
     gcb.set_model( generator )
     dcb.set_model( discriminator )
     ccb.set_model( combined )
@@ -535,7 +542,7 @@ if __name__ == '__main__':
             epoch + 1, np.mean(epoch_disc_loss, axis=0)))
 
         # save weights every epoch
-        # EV 10-Jan-2021:this needs to done only on one process. overwise each worker is writing it
+        # EV 10-Jan-2021: this needs to done only on one process. Otherwise each worker is writing it.
         if hvd.rank()==0:
             generator.save_weights('{0}{1:03d}.hdf5'.format(parse_args.g_pfx, epoch),
                                overwrite=True)
