@@ -16,6 +16,7 @@ import logging
 
 import numpy as np
 import os
+import glob
 from six.moves import range
 from sklearn.preprocessing import LabelEncoder
 from sklearn.utils import shuffle
@@ -83,6 +84,12 @@ def get_parser():
     parser.add_argument('--g-pfx', action='store',
                         default='params_generator_epoch_',
                         help='Default prefix for generator network weights')
+
+    parser.add_argument('--load-model', action='store_true',
+                         default=false, help='Load model from most recent .model files')
+
+    parser.add_argument('--save-model', action='store_true',
+                         default=false, help='Save model into .model files after each epoch')
 
     parser.add_argument('dataset', action='store', type=str,
                         help='yaml file with particles and HDF5 paths (see '
@@ -417,6 +424,28 @@ if __name__ == '__main__':
         loss=discriminator_losses
     )
 
+    # EV 07-Mar-2021: Load models if load_model=True
+    if load_model:
+        files = glob.glob("generator*.model")
+        if len(files)==0:
+            raise Exception("No generator model files found, quitting")
+        latest_file = max(files, key=os.path.getctime)
+        print("Using generator model from {}".format(latest_file))
+        generator = tf.keras.models.load_model(latest_file)
+        files = glob.glob("discriminator*.model")
+        if len(files)==0:
+            raise Exception("No discriminator model files found, quitting")
+        latest_file = max(files, key=os.path.getctime)
+        print("Using discriminator model from {}".format(latest_file))
+        discriminator = tf.keras.models.load_model(latest_file)
+        files = glob.glob("combined*.model")
+        if len(files)==0:
+            raise Exception("No combined model files found, quitting")
+        latest_file = max(files, key=os.path.getctime)
+        combined = tf.keras.models.load_model(latest_file)
+        print("Using combined model from {}".format(latest_file))
+
+
     # EV 10-Jan-2021: Broadcast initial variable states from rank 0 to all other processes
     # EV 06-Fev-2021: add hvd.callbacks.MetricAverageCallback()
     
@@ -549,3 +578,10 @@ if __name__ == '__main__':
 
             discriminator.save_weights('{0}{1:03d}.hdf5'.format(parse_args.d_pfx, epoch),
                                    overwrite=True)
+            if save_model:
+                generator.save_model('generator{1:03d}.model'.format(epoch),
+                               overwrite=True)
+                discriminator.save_model('discriminator{1:03d}.model'.format(epoch),
+                               overwrite=True)
+                combined.save_model('combined{1:03d}.model'.format(epoch),
+                               overwrite=True)
