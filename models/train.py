@@ -584,9 +584,9 @@ if __name__ == '__main__':
             discriminator.save_weights('{0}{1:03d}.hdf5'.format(parse_args.d_pfx, epoch),
                                    overwrite=True)
             if save_model:
-                generator.save_model('generator{1:03d}.model'.format(epoch),
+                generator.save('generator{0:03d}.model'.format(epoch),
                                overwrite=True)
-                discriminator.save_model('discriminator{1:03d}.model'.format(epoch),
+                discriminator.save('discriminator{0:03d}.model'.format(epoch),
                                overwrite=True)
-                combined.save_model('combined{1:03d}.model'.format(epoch),
+                combined.save('combined{0:03d}.model'.format(epoch),
                                overwrite=True)
