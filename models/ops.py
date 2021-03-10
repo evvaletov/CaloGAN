@@ -10,7 +10,7 @@ author: Luke de Oliveira (lukedeo@manifold.ai)
 import keras.backend as K
 from keras.engine import InputSpec, Layer
 from keras import initializers, regularizers, constraints, activations
-from keras.layers import Lambda, ZeroPadding2D, LocallyConnected2D
+from keras.layers import Lambda, ZeroPadding2D, LocallyConnected2D, Dense
 from keras.layers.merge import concatenate, multiply
 
 import numpy as np
@@ -200,5 +200,5 @@ class Dense3D(Layer):
             'kernel_constraint': constraints.serialize(self.kernel_constraint),
             'bias_constraint': constraints.serialize(self.bias_constraint)
         }
-        base_config = super(Dense, self).get_config()
+        base_config = super(Dense3D, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
