@@ -91,6 +91,9 @@ def get_parser():
     parser.add_argument('--save-model', action='store_true',
                          default=False, help='Save model into .model files after each epoch')
 
+    parser.add_argument('--load-weights', action='store_true',
+                         default=False, help='Load weights from most recent .hdf5 files')
+
     parser.add_argument('dataset', action='store', type=str,
                         help='yaml file with particles and HDF5 paths (see '
                         'github.com/hep-lbdl/CaloGAN/blob/master/models/'
@@ -163,6 +166,7 @@ if __name__ == '__main__':
 
     load_model = parse_args.load_model
     save_model = parse_args.save_model
+    load_weights = parse_args.load_weights
 
     # EV 10-Jan-2021 Adjust the learning rate
     #disc_lr = parse_args.disc_lr
@@ -450,6 +454,25 @@ if __name__ == '__main__':
         combined = models.load_model(latest_file)
         print("Using combined model from {}".format(latest_file))
 
+    last_epoch = -1
+    if load_weights:
+       files = glob.glob('{0}*.hdf5'.format(parse_args.g_pfx))
+       if len(files)==0:
+            raise Exception("No generator weights files found, quitting")
+       latest_file = max(files, key=os.path.getctime)
+       print("Using generator weights from {}".format(latest_file))
+       generator.load_weights(latest_file)
+       files = glob.glob('{0}*.hdf5'.format(parse_args.d_pfx))
+       if len(files)==0:
+            raise Exception("No discriminator weights files found, quitting")
+       latest_file = max(files, key=os.path.getctime)
+       print("Using discriminator weights from {}".format(latest_file))
+       discriminator.load_weights(latest_file)
+       # Get last epoch number
+       newstr = ''.join((ch if ch in '0123456789' else ' ') for ch in latest_file)
+       listOfNumbers = [float(i) for i in newstr.split()]
+       last_epoch = int(listOfNumbers[0])
+       print("The last epoch was {}".format(last_epoch))
 
     # EV 10-Jan-2021: Broadcast initial variable states from rank 0 to all other processes
     # EV 06-Fev-2021: add hvd.callbacks.MetricAverageCallback()
@@ -469,7 +492,7 @@ if __name__ == '__main__':
 
     logger.info('commencing training')
 
-    for epoch in range(nb_epochs):
+    for epoch in range(last_epoch+1, nb_epochs+last_epoch+1):
         logger.info('Epoch {} of {}'.format(epoch + 1, nb_epochs))
 
         nb_batches = int(first.shape[0] / batch_size)
@@ -578,15 +601,15 @@ if __name__ == '__main__':
         # save weights every epoch
         # EV 10-Jan-2021: this needs to done only on one process. Otherwise each worker is writing it.
         if hvd.rank()==0:
-            generator.save_weights('{0}{1:03d}.hdf5'.format(parse_args.g_pfx, epoch),
+            generator.save_weights('{0}{1:04d}.hdf5'.format(parse_args.g_pfx, epoch),
                                overwrite=True)
 
-            discriminator.save_weights('{0}{1:03d}.hdf5'.format(parse_args.d_pfx, epoch),
+            discriminator.save_weights('{0}{1:04d}.hdf5'.format(parse_args.d_pfx, epoch),
                                    overwrite=True)
             if save_model:
-                generator.save('generator{0:03d}.model'.format(epoch),
+                generator.save('generator{0:04d}.model'.format(epoch),
                                overwrite=True)
-                discriminator.save('discriminator{0:03d}.model'.format(epoch),
+                discriminator.save('discriminator{0:04d}.model'.format(epoch),
                                overwrite=True)
-                combined.save('combined{0:03d}.model'.format(epoch),
+                combined.save('combined{0:04d}.model'.format(epoch),
                                overwrite=True)
