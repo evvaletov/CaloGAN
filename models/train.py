@@ -456,23 +456,27 @@ if __name__ == '__main__':
 
     last_epoch = -1
     if load_weights:
-       files = glob.glob('{0}*.hdf5'.format(parse_args.g_pfx))
-       if len(files)==0:
-            raise Exception("No generator weights files found, quitting")
-       latest_file = max(files, key=os.path.getctime)
-       print("Using generator weights from {}".format(latest_file))
-       generator.load_weights(latest_file)
-       files = glob.glob('{0}*.hdf5'.format(parse_args.d_pfx))
-       if len(files)==0:
-            raise Exception("No discriminator weights files found, quitting")
-       latest_file = max(files, key=os.path.getctime)
-       print("Using discriminator weights from {}".format(latest_file))
-       discriminator.load_weights(latest_file)
-       # Get last epoch number
-       newstr = ''.join((ch if ch in '0123456789' else ' ') for ch in latest_file)
-       listOfNumbers = [float(i) for i in newstr.split()]
-       last_epoch = int(listOfNumbers[0])
-       print("The last epoch was {}".format(last_epoch))
+       try:
+           files = glob.glob('{0}*.hdf5'.format(parse_args.d_pfx))
+           if len(files)==0:
+               raise Exception("No discriminator weights files found, quitting")
+           files = glob.glob('{0}*.hdf5'.format(parse_args.g_pfx))
+           if len(files)==0:
+               raise Exception("No generator weights files found, quitting")
+           latest_file = max(files, key=os.path.getctime)
+           print("Using generator weights from {}".format(latest_file))
+           generator.load_weights(latest_file)
+           files = glob.glob('{0}*.hdf5'.format(parse_args.d_pfx))
+           latest_file = max(files, key=os.path.getctime)
+           print("Using discriminator weights from {}".format(latest_file))
+           discriminator.load_weights(latest_file)
+           # Get last epoch number
+           newstr = ''.join((ch if ch in '0123456789' else ' ') for ch in latest_file)
+           listOfNumbers = [float(i) for i in newstr.split()]
+           last_epoch = int(listOfNumbers[0])
+           print("The last epoch was {}".format(last_epoch))
+       except:
+           print("Did not find generator or discriminator weights files, starting from epoch 1")
 
     # EV 10-Jan-2021: Broadcast initial variable states from rank 0 to all other processes
     # EV 06-Fev-2021: add hvd.callbacks.MetricAverageCallback()
