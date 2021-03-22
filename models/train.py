@@ -445,29 +445,31 @@ if __name__ == '__main__':
             raise Exception("No generator optimizer state files found, quitting")
         latest_file = max(files, key=os.path.getctime)
         print("Using generator optimizer state from {}".format(latest_file))
-        generator._make_train_function()
-        with open(latest_file, 'rb') as f:
-            weight_values = pickle.load(f)
-        generator.optimizer.set_weights(weight_values)
+        opt_weights = np.load(latest_file, allow_pickle=True)
+        grad_vars = generator.trainable_weights
+        zero_grads = [tf.zeros_like(w) for w in grad_vars]
+        generator.optimizer.apply_gradients(zip(zero_grads, grad_vars))
+        generator.optimizer.set_weights(opt_weights)
         files = glob.glob('{0}*.optimizer'.format(parse_args.d_pfx))
         if len(files)==0:
             raise Exception("No discriminator optimizer state files found, quitting")
         latest_file = max(files, key=os.path.getctime)
         print("Using discriminator optimizer state from {}".format(latest_file))
-        discriminator._make_train_function()
-        with open(latest_file, 'rb') as f:
-            weight_values = pickle.load(f)
-        discriminator.optimizer.set_weights(weight_values)
+        opt_weights = np.load(latest_file, allow_pickle=True)
+        grad_vars = discriminator.trainable_weights
+        zero_grads = [tf.zeros_like(w) for w in grad_vars]
+        discriminator.optimizer.apply_gradients(zip(zero_grads, grad_vars))
+        discriminator.optimizer.set_weights(opt_weights)
         files = glob.glob('{0}*.optimizer'.format(parse_args.c_pfx))
         if len(files)==0:
             raise Exception("No combined optimizer state files found, quitting")
         latest_file = max(files, key=os.path.getctime)
         print("Using combined optimizer state from {}".format(latest_file))
-        combined._make_train_function()
-        with open(latest_file, 'rb') as f:
-            weight_values = pickle.load(f)
-        combined.optimizer.set_weights(weight_values)
-
+        opt_weights = np.load(latest_file, allow_pickle=True)
+        grad_vars = combined.trainable_weights
+        zero_grads = [tf.zeros_like(w) for w in grad_vars]
+        combined.optimizer.apply_gradients(zip(zero_grads, grad_vars))
+        combined.optimizer.set_weights(opt_weights)
 
     last_epoch = -1
     if load_weights or load_model:
@@ -652,18 +654,12 @@ if __name__ == '__main__':
                 #               overwrite=True)
                 #combined.save('combined{0:04d}.model'.format(epoch),
                 #               overwrite=True)
-                # Save optimizer state for generator
-                symbolic_weights = getattr(generator.optimizer, 'weights')
-                weight_values = K.batch_get_value(symbolic_weights)
+                # Save optimizer state for generator model
                 with open('{0}{1:04d}.optimizer'.format(parse_args.g_pfx,epoch), 'wb') as f:
-                    pickle.dump(weight_values, f)
-                # Save optimizer state for discriminator
-                symbolic_weights = getattr(discriminator.optimizer, 'weights')
-                weight_values = K.batch_get_value(symbolic_weights)
+                    np.save(f, generator.optimizer.get_weights())
+                # Save optimizer state for discriminator model
                 with open('{0}{1:04d}.optimizer'.format(parse_args.d_pfx,epoch), 'wb') as f:
-                    pickle.dump(weight_values, f)
+                    np.save(f, discriminator.optimizer.get_weights())
                 # Save optimizer state for the combined model
-                symbolic_weights = getattr(combined.optimizer, 'weights')
-                weight_values = K.batch_get_value(symbolic_weights)
                 with open('{0}{1:04d}.optimizer'.format(parse_args.c_pfx,epoch), 'wb') as f:
-                    pickle.dump(weight_values, f)
+                    np.save(f, combined.optimizer.get_weights())
