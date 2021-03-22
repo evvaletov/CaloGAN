@@ -22,6 +22,7 @@ from sklearn.preprocessing import LabelEncoder
 from sklearn.utils import shuffle
 import sys
 import yaml
+import pickle
 
 
 if __name__ == '__main__':
@@ -476,7 +477,27 @@ if __name__ == '__main__':
            last_epoch = int(listOfNumbers[0])
            print("The last epoch was {}".format(last_epoch))
        except:
-           print("Did not find generator or discriminator weights files, starting from epoch 1")
+           try:
+               files = glob.glob('{0}*.hdf5'.format(parse_args.d_pfx))[:-1]
+               if len(files)==0:
+                   raise Exception("No discriminator weights files found, quitting")
+               files = glob.glob('{0}*.hdf5'.format(parse_args.g_pfx))[:-1]
+               if len(files)==0:
+                   raise Exception("No generator weights files found, quitting")
+               latest_file = max(files, key=os.path.getctime)
+               print("Using generator weights from {}".format(latest_file))
+               generator.load_weights(latest_file)
+               files = glob.glob('{0}*.hdf5'.format(parse_args.d_pfx))
+               latest_file = max(files, key=os.path.getctime)
+               print("Using discriminator weights from {}".format(latest_file))
+               discriminator.load_weights(latest_file)
+               # Get last epoch number
+               newstr = ''.join((ch if ch in '0123456789' else ' ') for ch in latest_file)
+               listOfNumbers = [float(i) for i in newstr.split()]
+               last_epoch = int(listOfNumbers[0])
+               print("The last epoch was {}".format(last_epoch))
+           except:
+               print("Did not find generator or discriminator weights files, starting from epoch 1")
 
     # EV 10-Jan-2021: Broadcast initial variable states from rank 0 to all other processes
     # EV 06-Fev-2021: add hvd.callbacks.MetricAverageCallback()
@@ -497,7 +518,7 @@ if __name__ == '__main__':
     logger.info('commencing training')
 
     for epoch in range(last_epoch+1, nb_epochs+last_epoch+1):
-        logger.info('Epoch {} of {}'.format(epoch + 1, nb_epochs))
+        logger.info('Epoch {} of {}'.format(epoch + 1, nb_epochs+last_epoch+1))
 
         nb_batches = int(first.shape[0] / batch_size)
         if verbose:
@@ -611,9 +632,24 @@ if __name__ == '__main__':
             discriminator.save_weights('{0}{1:04d}.hdf5'.format(parse_args.d_pfx, epoch),
                                    overwrite=True)
             if save_model:
-                generator.save('generator{0:04d}.model'.format(epoch),
-                               overwrite=True)
-                discriminator.save('discriminator{0:04d}.model'.format(epoch),
-                               overwrite=True)
-                combined.save('combined{0:04d}.model'.format(epoch),
-                               overwrite=True)
+                #generator.save('generator{0:04d}.model'.format(epoch),
+                #               overwrite=True)
+                #discriminator.save('discriminator{0:04d}.model'.format(epoch),
+                #               overwrite=True)
+                #combined.save('combined{0:04d}.model'.format(epoch),
+                #               overwrite=True)
+                # Save optimizer state for generator
+                symbolic_weights = getattr(generator.optimizer, 'weights')
+                weight_values = K.batch_get_value(symbolic_weights)
+                with open('generator{0:04d}.optimizer'.format(epoch), 'wb') as f:
+                    pickle.dump(weight_values, f)
+                # Save optimizer state for discriminator
+                symbolic_weights = getattr(discriminator.optimizer, 'weights')
+                weight_values = K.batch_get_value(symbolic_weights)
+                with open('discriminator{0:04d}.optimizer'.format(epoch), 'wb') as f:
+                    pickle.dump(weight_values, f)
+                # Save optimizer state for the combined model
+                symbolic_weights = getattr(combined.optimizer, 'weights')
+                weight_values = K.batch_get_value(symbolic_weights)
+                with open('combined{0:04d}.optimizer'.format(epoch), 'wb') as f:
+                    pickle.dump(weight_values, f)
