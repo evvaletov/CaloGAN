@@ -86,6 +86,10 @@ def get_parser():
                         default='params_generator_epoch_',
                         help='Default prefix for generator network weights')
 
+    parser.add_argument('--c-pfx', action='store',
+                        default='params_combined_epoch_',
+                        help='Default prefix for combined network weights')
+
     parser.add_argument('--load-model', action='store_true',
                          default=False, help='Load model from most recent .model files')
 
@@ -436,38 +440,48 @@ if __name__ == '__main__':
 
     # EV 07-Mar-2021: Load models if load_model=True
     if load_model:
-        files = glob.glob("generator*.model")
+        files = glob.glob('{0}*.optimizer'.format(parse_args.g_pfx))
         if len(files)==0:
-            raise Exception("No generator model files found, quitting")
+            raise Exception("No generator optimizer state files found, quitting")
         latest_file = max(files, key=os.path.getctime)
-        print("Using generator model from {}".format(latest_file))
-        generator = models.load_model(latest_file)
-        files = glob.glob("discriminator*.model")
+        print("Using generator optimizer state from {}".format(latest_file))
+        generator._make_train_function()
+        with open(latest_file, 'rb') as f:
+            weight_values = pickle.load(f)
+        generator.optimizer.set_weights(weight_values)
+        files = glob.glob('{0}*.optimizer'.format(parse_args.d_pfx))
         if len(files)==0:
-            raise Exception("No discriminator model files found, quitting")
+            raise Exception("No discriminator optimizer state files found, quitting")
         latest_file = max(files, key=os.path.getctime)
-        print("Using discriminator model from {}".format(latest_file))
-        discriminator = models.load_model(latest_file)
-        files = glob.glob("combined*.model")
+        print("Using discriminator optimizer state from {}".format(latest_file))
+        discriminator._make_train_function()
+        with open(latest_file, 'rb') as f:
+            weight_values = pickle.load(f)
+        discriminator.optimizer.set_weights(weight_values)
+        files = glob.glob('{0}*.optimizer'.format(parse_args.c_pfx))
         if len(files)==0:
-            raise Exception("No combined model files found, quitting")
+            raise Exception("No combined optimizer state files found, quitting")
         latest_file = max(files, key=os.path.getctime)
-        combined = models.load_model(latest_file)
-        print("Using combined model from {}".format(latest_file))
+        print("Using combined optimizer state from {}".format(latest_file))
+        combined._make_train_function()
+        with open(latest_file, 'rb') as f:
+            weight_values = pickle.load(f)
+        combined.optimizer.set_weights(weight_values)
+
 
     last_epoch = -1
-    if load_weights:
+    if load_weights or load_model:
        try:
-           files = glob.glob('{0}*.hdf5'.format(parse_args.d_pfx))
+           files = glob.glob('{0}*.weights'.format(parse_args.d_pfx))
            if len(files)==0:
                raise Exception("No discriminator weights files found, quitting")
-           files = glob.glob('{0}*.hdf5'.format(parse_args.g_pfx))
+           files = glob.glob('{0}*.weights'.format(parse_args.g_pfx))
            if len(files)==0:
                raise Exception("No generator weights files found, quitting")
            latest_file = max(files, key=os.path.getctime)
            print("Using generator weights from {}".format(latest_file))
            generator.load_weights(latest_file)
-           files = glob.glob('{0}*.hdf5'.format(parse_args.d_pfx))
+           files = glob.glob('{0}*.weights'.format(parse_args.d_pfx))
            latest_file = max(files, key=os.path.getctime)
            print("Using discriminator weights from {}".format(latest_file))
            discriminator.load_weights(latest_file)
@@ -478,16 +492,16 @@ if __name__ == '__main__':
            print("The last epoch was {}".format(last_epoch))
        except:
            try:
-               files = glob.glob('{0}*.hdf5'.format(parse_args.d_pfx))[:-1]
+               files = glob.glob('{0}*.weights'.format(parse_args.d_pfx))[:-1]
                if len(files)==0:
                    raise Exception("No discriminator weights files found, quitting")
-               files = glob.glob('{0}*.hdf5'.format(parse_args.g_pfx))[:-1]
+               files = glob.glob('{0}*.weights'.format(parse_args.g_pfx))[:-1]
                if len(files)==0:
                    raise Exception("No generator weights files found, quitting")
                latest_file = max(files, key=os.path.getctime)
                print("Using generator weights from {}".format(latest_file))
                generator.load_weights(latest_file)
-               files = glob.glob('{0}*.hdf5'.format(parse_args.d_pfx))
+               files = glob.glob('{0}*.weights'.format(parse_args.d_pfx))
                latest_file = max(files, key=os.path.getctime)
                print("Using discriminator weights from {}".format(latest_file))
                discriminator.load_weights(latest_file)
@@ -626,10 +640,10 @@ if __name__ == '__main__':
         # save weights every epoch
         # EV 10-Jan-2021: this needs to done only on one process. Otherwise each worker is writing it.
         if hvd.rank()==0:
-            generator.save_weights('{0}{1:04d}.hdf5'.format(parse_args.g_pfx, epoch),
+            generator.save_weights('{0}{1:04d}.weights'.format(parse_args.g_pfx, epoch),
                                overwrite=True)
 
-            discriminator.save_weights('{0}{1:04d}.hdf5'.format(parse_args.d_pfx, epoch),
+            discriminator.save_weights('{0}{1:04d}.weights'.format(parse_args.d_pfx, epoch),
                                    overwrite=True)
             if save_model:
                 #generator.save('generator{0:04d}.model'.format(epoch),
@@ -641,15 +655,15 @@ if __name__ == '__main__':
                 # Save optimizer state for generator
                 symbolic_weights = getattr(generator.optimizer, 'weights')
                 weight_values = K.batch_get_value(symbolic_weights)
-                with open('generator{0:04d}.optimizer'.format(epoch), 'wb') as f:
+                with open('{0}{1:04d}.optimizer'.format(parse_args.g_pfx,epoch), 'wb') as f:
                     pickle.dump(weight_values, f)
                 # Save optimizer state for discriminator
                 symbolic_weights = getattr(discriminator.optimizer, 'weights')
                 weight_values = K.batch_get_value(symbolic_weights)
-                with open('discriminator{0:04d}.optimizer'.format(epoch), 'wb') as f:
+                with open('{0}{1:04d}.optimizer'.format(parse_args.d_pfx,epoch), 'wb') as f:
                     pickle.dump(weight_values, f)
                 # Save optimizer state for the combined model
                 symbolic_weights = getattr(combined.optimizer, 'weights')
                 weight_values = K.batch_get_value(symbolic_weights)
-                with open('combined{0:04d}.optimizer'.format(epoch), 'wb') as f:
+                with open('{0}{1:04d}.optimizer'.format(parse_args.c_pfx,epoch), 'wb') as f:
                     pickle.dump(weight_values, f)
