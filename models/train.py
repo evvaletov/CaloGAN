@@ -438,105 +438,8 @@ if __name__ == '__main__':
         loss=discriminator_losses
     )
 
-    # EV 07-Mar-2021: Load models if load_model=True
-    if load_model:
-        files = glob.glob('{0}*.optimizer'.format(parse_args.g_pfx))
-        if len(files)==0:
-            raise Exception("No generator optimizer state files found, quitting")
-        latest_file = max(files, key=os.path.getctime)
-        print("Using generator optimizer state from {}".format(latest_file))
-        opt_weights = np.load(latest_file, allow_pickle=True)
-        grad_vars = generator.trainable_weights
-        zero_grads = [tf.zeros_like(w) for w in grad_vars]
-        generator.optimizer.apply_gradients(zip(zero_grads, grad_vars))
-        generator.optimizer.set_weights(opt_weights)
-        files = glob.glob('{0}*.optimizer'.format(parse_args.d_pfx))
-        if len(files)==0:
-            raise Exception("No discriminator optimizer state files found, quitting")
-        latest_file = max(files, key=os.path.getctime)
-        print("Using discriminator optimizer state from {}".format(latest_file))
-        opt_weights = np.load(latest_file, allow_pickle=True)
-        grad_vars = discriminator.trainable_weights
-        zero_grads = [tf.zeros_like(w) for w in grad_vars]
-        discriminator.optimizer.apply_gradients(zip(zero_grads, grad_vars))
-        discriminator.optimizer.set_weights(opt_weights)
-        files = glob.glob('{0}*.optimizer'.format(parse_args.c_pfx))
-        if len(files)==0:
-            raise Exception("No combined optimizer state files found, quitting")
-        latest_file = max(files, key=os.path.getctime)
-        print("Using combined optimizer state from {}".format(latest_file))
-        opt_weights = np.load(latest_file, allow_pickle=True)
-        grad_vars = combined.trainable_weights
-        zero_grads = [tf.zeros_like(w) for w in grad_vars]
-        combined.optimizer.apply_gradients(zip(zero_grads, grad_vars))
-        combined.optimizer.set_weights(opt_weights)
+    def train_gan(epoch, nb_batches):
 
-    last_epoch = -1
-    if load_weights or load_model:
-       try:
-           files = glob.glob('{0}*.weights'.format(parse_args.d_pfx))
-           if len(files)==0:
-               raise Exception("No discriminator weights files found, quitting")
-           files = glob.glob('{0}*.weights'.format(parse_args.g_pfx))
-           if len(files)==0:
-               raise Exception("No generator weights files found, quitting")
-           latest_file = max(files, key=os.path.getctime)
-           print("Using generator weights from {}".format(latest_file))
-           generator.load_weights(latest_file)
-           files = glob.glob('{0}*.weights'.format(parse_args.d_pfx))
-           latest_file = max(files, key=os.path.getctime)
-           print("Using discriminator weights from {}".format(latest_file))
-           discriminator.load_weights(latest_file)
-           # Get last epoch number
-           newstr = ''.join((ch if ch in '0123456789' else ' ') for ch in latest_file)
-           listOfNumbers = [float(i) for i in newstr.split()]
-           last_epoch = int(listOfNumbers[0])
-           print("The last epoch was {}".format(last_epoch))
-       except:
-           try:
-               files = glob.glob('{0}*.weights'.format(parse_args.d_pfx))[:-1]
-               if len(files)==0:
-                   raise Exception("No discriminator weights files found, quitting")
-               files = glob.glob('{0}*.weights'.format(parse_args.g_pfx))[:-1]
-               if len(files)==0:
-                   raise Exception("No generator weights files found, quitting")
-               latest_file = max(files, key=os.path.getctime)
-               print("Using generator weights from {}".format(latest_file))
-               generator.load_weights(latest_file)
-               files = glob.glob('{0}*.weights'.format(parse_args.d_pfx))
-               latest_file = max(files, key=os.path.getctime)
-               print("Using discriminator weights from {}".format(latest_file))
-               discriminator.load_weights(latest_file)
-               # Get last epoch number
-               newstr = ''.join((ch if ch in '0123456789' else ' ') for ch in latest_file)
-               listOfNumbers = [float(i) for i in newstr.split()]
-               last_epoch = int(listOfNumbers[0])
-               print("The last epoch was {}".format(last_epoch))
-           except:
-               print("Did not find generator or discriminator weights files, starting from epoch 1")
-
-    # EV 10-Jan-2021: Broadcast initial variable states from rank 0 to all other processes
-    # EV 06-Fev-2021: add hvd.callbacks.MetricAverageCallback()
-    
-    gcb = CallbackList([hvd.callbacks.BroadcastGlobalVariablesCallback(0), hvd.callbacks.MetricAverageCallback()])
-    dcb = CallbackList([hvd.callbacks.BroadcastGlobalVariablesCallback(0), hvd.callbacks.MetricAverageCallback()])
-    ccb = CallbackList([hvd.callbacks.BroadcastGlobalVariablesCallback(0), hvd.callbacks.MetricAverageCallback()])
-
-    gcb.set_model( generator )
-    dcb.set_model( discriminator )
-    ccb.set_model( combined )
-
-
-    gcb.on_train_begin()
-    dcb.on_train_begin()
-    ccb.on_train_begin()
-
-    logger.info('commencing training')
-
-    for epoch in range(last_epoch+1, nb_epochs+last_epoch+1):
-        logger.info('Epoch {} of {}'.format(epoch + 1, nb_epochs+last_epoch+1))
-
-        nb_batches = int(first.shape[0] / batch_size)
         if verbose:
             progress_bar = Progbar(target=nb_batches)
 
@@ -638,6 +541,112 @@ if __name__ == '__main__':
             epoch + 1, np.mean(epoch_gen_loss, axis=0)))
         logger.info('Epoch {:3d} Discriminator loss: {}'.format(
             epoch + 1, np.mean(epoch_disc_loss, axis=0)))
+
+    # EV 07-Mar-2021: Load models if load_model=True
+    if load_model:
+        train_gan(0,1)
+        files = glob.glob('{0}*.optimizer'.format(parse_args.g_pfx))
+        if len(files)==0:
+            raise Exception("No generator optimizer state files found, quitting")
+        latest_file = max(files, key=os.path.getctime)
+        print("Using generator optimizer state from {}".format(latest_file))
+        opt_weights = np.load(latest_file, allow_pickle=True)
+        grad_vars = generator.trainable_weights
+        zero_grads = [tf.zeros_like(w) for w in grad_vars]
+        generator.optimizer.get_gradients(generator.total_loss, generator.trainable_weights)
+        #generator.optimizer.apply_gradients(zip(zero_grads, grad_vars))
+        generator.optimizer.set_weights(opt_weights)
+        files = glob.glob('{0}*.optimizer'.format(parse_args.d_pfx))
+        if len(files)==0:
+            raise Exception("No discriminator optimizer state files found, quitting")
+        latest_file = max(files, key=os.path.getctime)
+        print("Using discriminator optimizer state from {}".format(latest_file))
+        opt_weights = np.load(latest_file, allow_pickle=True)
+        grad_vars = discriminator.trainable_weights
+        zero_grads = [tf.zeros_like(w) for w in grad_vars]
+        discriminator.optimizer.get_gradients(discriminator.total_loss, discriminator.trainable_weights)
+        #discriminator.optimizer.apply_gradients(zip(zero_grads, grad_vars))
+        discriminator.optimizer.set_weights(opt_weights)
+        files = glob.glob('{0}*.optimizer'.format(parse_args.c_pfx))
+        if len(files)==0:
+            raise Exception("No combined optimizer state files found, quitting")
+        latest_file = max(files, key=os.path.getctime)
+        print("Using combined optimizer state from {}".format(latest_file))
+        opt_weights = np.load(latest_file, allow_pickle=True)
+        grad_vars = combined.trainable_weights
+        zero_grads = [tf.zeros_like(w) for w in grad_vars]
+        combined.optimizer.get_gradients(combined.total_loss, combined.trainable_weights)
+        #combined.optimizer.apply_gradients(zip(zero_grads, grad_vars))
+        combined.optimizer.set_weights(opt_weights)
+
+    last_epoch = -1
+    if load_weights or load_model:
+       try:
+           files = glob.glob('{0}*.weights'.format(parse_args.d_pfx))
+           if len(files)==0:
+               raise Exception("No discriminator weights files found, quitting")
+           files = glob.glob('{0}*.weights'.format(parse_args.g_pfx))
+           if len(files)==0:
+               raise Exception("No generator weights files found, quitting")
+           latest_file = max(files, key=os.path.getctime)
+           print("Using generator weights from {}".format(latest_file))
+           generator.load_weights(latest_file)
+           files = glob.glob('{0}*.weights'.format(parse_args.d_pfx))
+           latest_file = max(files, key=os.path.getctime)
+           print("Using discriminator weights from {}".format(latest_file))
+           discriminator.load_weights(latest_file)
+           # Get last epoch number
+           newstr = ''.join((ch if ch in '0123456789' else ' ') for ch in latest_file)
+           listOfNumbers = [float(i) for i in newstr.split()]
+           last_epoch = int(listOfNumbers[0])
+           print("The last epoch was {}".format(last_epoch))
+       except:
+           try:
+               files = glob.glob('{0}*.weights'.format(parse_args.d_pfx))[:-1]
+               if len(files)==0:
+                   raise Exception("No discriminator weights files found, quitting")
+               files = glob.glob('{0}*.weights'.format(parse_args.g_pfx))[:-1]
+               if len(files)==0:
+                   raise Exception("No generator weights files found, quitting")
+               latest_file = max(files, key=os.path.getctime)
+               print("Using generator weights from {}".format(latest_file))
+               generator.load_weights(latest_file)
+               files = glob.glob('{0}*.weights'.format(parse_args.d_pfx))
+               latest_file = max(files, key=os.path.getctime)
+               print("Using discriminator weights from {}".format(latest_file))
+               discriminator.load_weights(latest_file)
+               # Get last epoch number
+               newstr = ''.join((ch if ch in '0123456789' else ' ') for ch in latest_file)
+               listOfNumbers = [float(i) for i in newstr.split()]
+               last_epoch = int(listOfNumbers[0])
+               print("The last epoch was {}".format(last_epoch))
+           except:
+               print("Did not find generator or discriminator weights files, starting from epoch 1")
+
+    # EV 10-Jan-2021: Broadcast initial variable states from rank 0 to all other processes
+    # EV 06-Fev-2021: add hvd.callbacks.MetricAverageCallback()
+    
+    gcb = CallbackList([hvd.callbacks.BroadcastGlobalVariablesCallback(0), hvd.callbacks.MetricAverageCallback()])
+    dcb = CallbackList([hvd.callbacks.BroadcastGlobalVariablesCallback(0), hvd.callbacks.MetricAverageCallback()])
+    ccb = CallbackList([hvd.callbacks.BroadcastGlobalVariablesCallback(0), hvd.callbacks.MetricAverageCallback()])
+
+    gcb.set_model( generator )
+    dcb.set_model( discriminator )
+    ccb.set_model( combined )
+
+
+    gcb.on_train_begin()
+    dcb.on_train_begin()
+    ccb.on_train_begin()
+
+    logger.info('commencing training')
+
+    for epoch in range(last_epoch+1, nb_epochs+last_epoch+1):
+
+        logger.info('Epoch {} of {}'.format(epoch + 1, nb_epochs+last_epoch+1))
+        nb_batches = int(first.shape[0] / batch_size)
+        
+        train_gan(epoch, nb_batches)
 
         # save weights every epoch
         # EV 10-Jan-2021: this needs to done only on one process. Otherwise each worker is writing it.
