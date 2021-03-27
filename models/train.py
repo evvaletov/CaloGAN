@@ -542,86 +542,88 @@ if __name__ == '__main__':
         logger.info('Epoch {:3d} Discriminator loss: {}'.format(
             epoch + 1, np.mean(epoch_disc_loss, axis=0)))
 
-    # EV 07-Mar-2021: Load models if load_model=True
+    last_epoch = -1
+
+    # EV 07-Mar-2021: Load weights and optimizer states if load_model=True
+
+    def getLastEpoch(filenamemask):
+        files = glob.glob(filenamemask)
+        if len(files)==0:
+            return -1
+        latest_file = max(files, key=os.path.getctime)
+        newstr = ''.join((ch if ch in '0123456789' else ' ') for ch in latest_file)
+        listOfNumbers = [float(i) for i in newstr.split()]
+        last_epoch = int(listOfNumbers[0])
+        print("The last epoch was {}".format(last_epoch))
+        return last_epoch
+
+
     if load_model:
+        # Get latest epoch for saved optimizer state data
+        last_epoch = getLastEpoch('{0}*.optimizer'.format(parse_args.c_pfx))
+        print("Latest epoch in optimizer state data: {}".format(last_epoch))
+
+
+    if load_model and (last_epoch>-1):
+        # Run training for one dummy epoch to initialize gradients
         train_gan(0,1)
-        files = glob.glob('{0}*.optimizer'.format(parse_args.g_pfx))
+
+        # Load generator optimizer state
+        filename = '{0}{1:04d}.optimizer'.format(parse_args.g_pfx,last_epoch)
+        files = glob.glob(filename)
         if len(files)==0:
-            raise Exception("No generator optimizer state files found, quitting")
-        latest_file = max(files, key=os.path.getctime)
-        print("Using generator optimizer state from {}".format(latest_file))
-        opt_weights = np.load(latest_file, allow_pickle=True)
-        grad_vars = generator.trainable_weights
-        zero_grads = [tf.zeros_like(w) for w in grad_vars]
-        generator.optimizer.get_gradients(generator.total_loss, generator.trainable_weights)
-        #generator.optimizer.apply_gradients(zip(zero_grads, grad_vars))
+            raise Exception("Generator optimizer state file {} not found".format(filename))
+        print("Using generator optimizer state from {}".format(filename))
+        opt_weights = np.load(filename, allow_pickle=True)
         generator.optimizer.set_weights(opt_weights)
-        files = glob.glob('{0}*.optimizer'.format(parse_args.d_pfx))
+        
+        # Load discriminator optimizer state
+        filename = '{0}{1:04d}.optimizer'.format(parse_args.d_pfx,last_epoch)
+        files = glob.glob(filename)
         if len(files)==0:
-            raise Exception("No discriminator optimizer state files found, quitting")
-        latest_file = max(files, key=os.path.getctime)
-        print("Using discriminator optimizer state from {}".format(latest_file))
-        opt_weights = np.load(latest_file, allow_pickle=True)
-        grad_vars = discriminator.trainable_weights
-        zero_grads = [tf.zeros_like(w) for w in grad_vars]
-        discriminator.optimizer.get_gradients(discriminator.total_loss, discriminator.trainable_weights)
-        #discriminator.optimizer.apply_gradients(zip(zero_grads, grad_vars))
+            raise Exception("Discriminator optimizer state file {} not found".format(filename))
+        print("Using discriminator optimizer state from {}".format(filename))
+        opt_weights = np.load(filename, allow_pickle=True)
         discriminator.optimizer.set_weights(opt_weights)
-        files = glob.glob('{0}*.optimizer'.format(parse_args.c_pfx))
+
+        # Load combined optimizer state
+        filename = '{0}{1:04d}.optimizer'.format(parse_args.c_pfx,last_epoch)
+        files = glob.glob(filename)
         if len(files)==0:
-            raise Exception("No combined optimizer state files found, quitting")
-        latest_file = max(files, key=os.path.getctime)
-        print("Using combined optimizer state from {}".format(latest_file))
-        opt_weights = np.load(latest_file, allow_pickle=True)
-        grad_vars = combined.trainable_weights
-        zero_grads = [tf.zeros_like(w) for w in grad_vars]
-        combined.optimizer.get_gradients(combined.total_loss, combined.trainable_weights)
-        #combined.optimizer.apply_gradients(zip(zero_grads, grad_vars))
+            raise Exception("Combined optimizer state file {} not found".format(filename))
+        print("Using combined optimizer state from {}".format(filename))
+        opt_weights = np.load(filename, allow_pickle=True)
         combined.optimizer.set_weights(opt_weights)
 
-    last_epoch = -1
-    if load_weights or load_model:
-       try:
-           files = glob.glob('{0}*.weights'.format(parse_args.d_pfx))
-           if len(files)==0:
-               raise Exception("No discriminator weights files found, quitting")
-           files = glob.glob('{0}*.weights'.format(parse_args.g_pfx))
-           if len(files)==0:
-               raise Exception("No generator weights files found, quitting")
-           latest_file = max(files, key=os.path.getctime)
-           print("Using generator weights from {}".format(latest_file))
-           generator.load_weights(latest_file)
-           files = glob.glob('{0}*.weights'.format(parse_args.d_pfx))
-           latest_file = max(files, key=os.path.getctime)
-           print("Using discriminator weights from {}".format(latest_file))
-           discriminator.load_weights(latest_file)
-           # Get last epoch number
-           newstr = ''.join((ch if ch in '0123456789' else ' ') for ch in latest_file)
-           listOfNumbers = [float(i) for i in newstr.split()]
-           last_epoch = int(listOfNumbers[0])
-           print("The last epoch was {}".format(last_epoch))
-       except:
-           try:
-               files = glob.glob('{0}*.weights'.format(parse_args.d_pfx))[:-1]
-               if len(files)==0:
-                   raise Exception("No discriminator weights files found, quitting")
-               files = glob.glob('{0}*.weights'.format(parse_args.g_pfx))[:-1]
-               if len(files)==0:
-                   raise Exception("No generator weights files found, quitting")
-               latest_file = max(files, key=os.path.getctime)
-               print("Using generator weights from {}".format(latest_file))
-               generator.load_weights(latest_file)
-               files = glob.glob('{0}*.weights'.format(parse_args.d_pfx))
-               latest_file = max(files, key=os.path.getctime)
-               print("Using discriminator weights from {}".format(latest_file))
-               discriminator.load_weights(latest_file)
-               # Get last epoch number
-               newstr = ''.join((ch if ch in '0123456789' else ' ') for ch in latest_file)
-               listOfNumbers = [float(i) for i in newstr.split()]
-               last_epoch = int(listOfNumbers[0])
-               print("The last epoch was {}".format(last_epoch))
-           except:
-               print("Did not find generator or discriminator weights files, starting from epoch 1")
+
+    if load_weights and not(load_model):
+        last_epoch = getLastEpoch('{0}*.weights'.format(parse_args.d_pfx))
+        print("Latest epoch in weights data: {}".format(last_epoch))
+
+
+    if (load_weights or load_model) and (last_epoch>-1):
+        if not load_model:
+            last_epoch = getLastEpoch('{0}*.weights'.format(parse_args.d_pfx))
+            print("Latest epoch in weights data: {}".format(last_epoch))
+        
+        # Load generator weights
+        filename = '{0}{1:04d}.weights'.format(parse_args.g_pfx,last_epoch)
+        files = glob.glob(filename)
+        if len(files)==0:
+            raise Exception("Generator weights file {} not found".format(filename))
+        #latest_file = max(files, key=os.path.getctime)
+        print("Using generator weights from {}".format(filename))
+        generator.load_weights(filename)
+
+        # Load discriminator weights
+        filename = '{0}{1:04d}.weights'.format(parse_args.d_pfx,last_epoch)
+        files = glob.glob(filename)
+        if len(files)==0:
+            raise Exception("Generator weights file {} not found".format(filename))
+        #latest_file = max(files, key=os.path.getctime)
+        print("Using discriminator weights from {}".format(filename))
+        discriminator.load_weights(filename)
+
 
     # EV 10-Jan-2021: Broadcast initial variable states from rank 0 to all other processes
     # EV 06-Fev-2021: add hvd.callbacks.MetricAverageCallback()
@@ -664,11 +666,11 @@ if __name__ == '__main__':
                 #combined.save('combined{0:04d}.model'.format(epoch),
                 #               overwrite=True)
                 # Save optimizer state for generator model
-                with open('{0}{1:04d}.optimizer'.format(parse_args.g_pfx,epoch), 'wb') as f:
+                with open('{0}{1:04d}.optimizer'.format(parse_args.g_pfx, epoch), 'wb') as f:
                     np.save(f, generator.optimizer.get_weights())
                 # Save optimizer state for discriminator model
-                with open('{0}{1:04d}.optimizer'.format(parse_args.d_pfx,epoch), 'wb') as f:
+                with open('{0}{1:04d}.optimizer'.format(parse_args.d_pfx, epoch), 'wb') as f:
                     np.save(f, discriminator.optimizer.get_weights())
                 # Save optimizer state for the combined model
-                with open('{0}{1:04d}.optimizer'.format(parse_args.c_pfx,epoch), 'wb') as f:
+                with open('{0}{1:04d}.optimizer'.format(parse_args.c_pfx, epoch), 'wb') as f:
                     np.save(f, combined.optimizer.get_weights())
