@@ -91,13 +91,16 @@ def get_parser():
                         help='Default prefix for combined network weights')
 
     parser.add_argument('--load-model', action='store_true',
-                         default=False, help='Load model from most recent .model files')
+                         default=False, help='Load model from most recent .optimizer files')
 
     parser.add_argument('--save-model', action='store_true',
-                         default=False, help='Save model into .model files after each epoch')
+                         default=False, help='Save model into .optimizer files after each epoch')
 
     parser.add_argument('--load-weights', action='store_true',
-                         default=False, help='Load weights from most recent .hdf5 files')
+                         default=False, help='Load weights from most recent .weights files')
+
+    parser.add_argument('--process0', action='store_true',
+                         default=False, help='Save and load weights and optimizer states only from process 0')
 
     parser.add_argument('dataset', action='store', type=str,
                         help='yaml file with particles and HDF5 paths (see '
@@ -172,6 +175,7 @@ if __name__ == '__main__':
     load_model = parse_args.load_model
     save_model = parse_args.save_model
     load_weights = parse_args.load_weights
+    process0 = parse_args.process0
 
     # EV 10-Jan-2021 Adjust the learning rate
     #disc_lr = parse_args.disc_lr
@@ -543,6 +547,7 @@ if __name__ == '__main__':
             epoch + 1, np.mean(epoch_disc_loss, axis=0)))
 
     last_epoch = -1
+    rank_to_load = 0 if process0 else hvd.rank()
 
     # EV 07-Mar-2021: Load weights and optimizer states if load_model=True
 
@@ -560,7 +565,7 @@ if __name__ == '__main__':
 
     if load_model:
         # Get latest epoch for saved optimizer state data
-        last_epoch = getLastEpoch('{0}*.optimizer'.format(parse_args.c_pfx))
+        last_epoch = getLastEpoch('{0}*_{1:03d}.optimizer'.format(parse_args.c_pfx,rank_to_load))
         print("Latest epoch in optimizer state data: {}".format(last_epoch))
 
 
@@ -569,7 +574,7 @@ if __name__ == '__main__':
         train_gan(0,1)
 
         # Load generator optimizer state
-        filename = '{0}{1:04d}.optimizer'.format(parse_args.g_pfx,last_epoch)
+        filename = '{0}{1:04d}_{2:03d}.optimizer'.format(parse_args.g_pfx,last_epoch,rank_to_load)
         files = glob.glob(filename)
         if len(files)==0:
             raise Exception("Generator optimizer state file {} not found".format(filename))
@@ -578,7 +583,7 @@ if __name__ == '__main__':
         generator.optimizer.set_weights(opt_weights)
         
         # Load discriminator optimizer state
-        filename = '{0}{1:04d}.optimizer'.format(parse_args.d_pfx,last_epoch)
+        filename = '{0}{1:04d}_{2:03d}.optimizer'.format(parse_args.d_pfx,last_epoch,rank_to_load)
         files = glob.glob(filename)
         if len(files)==0:
             raise Exception("Discriminator optimizer state file {} not found".format(filename))
@@ -587,7 +592,7 @@ if __name__ == '__main__':
         discriminator.optimizer.set_weights(opt_weights)
 
         # Load combined optimizer state
-        filename = '{0}{1:04d}.optimizer'.format(parse_args.c_pfx,last_epoch)
+        filename = '{0}{1:04d}_{2:03d}.optimizer'.format(parse_args.c_pfx,last_epoch,rank_to_load)
         files = glob.glob(filename)
         if len(files)==0:
             raise Exception("Combined optimizer state file {} not found".format(filename))
@@ -597,7 +602,7 @@ if __name__ == '__main__':
 
 
     if load_weights and not(load_model):
-        last_epoch = getLastEpoch('{0}*.weights'.format(parse_args.d_pfx))
+        last_epoch = getLastEpoch('{0}*_{1:03d}.weights'.format(parse_args.d_pfx,rank_to_load))
         print("Latest epoch in weights data: {}".format(last_epoch))
 
 
@@ -607,7 +612,7 @@ if __name__ == '__main__':
             print("Latest epoch in weights data: {}".format(last_epoch))
         
         # Load generator weights
-        filename = '{0}{1:04d}.weights'.format(parse_args.g_pfx,last_epoch)
+        filename = '{0}{1:04d}_{2:03d}.weights'.format(parse_args.g_pfx,last_epoch,rank_to_load)
         files = glob.glob(filename)
         if len(files)==0:
             raise Exception("Generator weights file {} not found".format(filename))
@@ -616,7 +621,7 @@ if __name__ == '__main__':
         generator.load_weights(filename)
 
         # Load discriminator weights
-        filename = '{0}{1:04d}.weights'.format(parse_args.d_pfx,last_epoch)
+        filename = '{0}{1:04d}_{2:03d}.weights'.format(parse_args.d_pfx,last_epoch,rank_to_load)
         files = glob.glob(filename)
         if len(files)==0:
             raise Exception("Generator weights file {} not found".format(filename))
@@ -652,11 +657,11 @@ if __name__ == '__main__':
 
         # save weights every epoch
         # EV 10-Jan-2021: this needs to done only on one process. Otherwise each worker is writing it.
-        if hvd.rank()==0:
-            generator.save_weights('{0}{1:04d}.weights'.format(parse_args.g_pfx, epoch),
+        if (hvd.rank()==0) or (not process0):
+            generator.save_weights('{0}{1:04d}_{2:03d}.weights'.format(parse_args.g_pfx, epoch, hvd.rank()),
                                overwrite=True)
 
-            discriminator.save_weights('{0}{1:04d}.weights'.format(parse_args.d_pfx, epoch),
+            discriminator.save_weights('{0}{1:04d}_{2:03d}.weights'.format(parse_args.d_pfx, epoch, hvd.rank()),
                                    overwrite=True)
             if save_model:
                 #generator.save('generator{0:04d}.model'.format(epoch),
@@ -666,11 +671,11 @@ if __name__ == '__main__':
                 #combined.save('combined{0:04d}.model'.format(epoch),
                 #               overwrite=True)
                 # Save optimizer state for generator model
-                with open('{0}{1:04d}.optimizer'.format(parse_args.g_pfx, epoch), 'wb') as f:
+                with open('{0}{1:04d}_{2:03d}.optimizer'.format(parse_args.g_pfx, epoch, hvd.rank()), 'wb') as f:
                     np.save(f, generator.optimizer.get_weights())
                 # Save optimizer state for discriminator model
-                with open('{0}{1:04d}.optimizer'.format(parse_args.d_pfx, epoch), 'wb') as f:
+                with open('{0}{1:04d}_{2:03d}.optimizer'.format(parse_args.d_pfx, epoch, hvd.rank()), 'wb') as f:
                     np.save(f, discriminator.optimizer.get_weights())
                 # Save optimizer state for the combined model
-                with open('{0}{1:04d}.optimizer'.format(parse_args.c_pfx, epoch), 'wb') as f:
+                with open('{0}{1:04d}_{2:03d}.optimizer'.format(parse_args.c_pfx, epoch, hvd.rank()), 'wb') as f:
                     np.save(f, combined.optimizer.get_weights())
