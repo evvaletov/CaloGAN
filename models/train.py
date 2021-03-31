@@ -102,6 +102,9 @@ def get_parser():
     parser.add_argument('--process0', action='store_true',
                          default=False, help='Save and load weights and optimizer states only from process 0')
 
+    parser.add_argument('--no-delete', action='store_true',
+                         default=False, help='Do not delete weights and optimizer states after loading them')
+
     parser.add_argument('dataset', action='store', type=str,
                         help='yaml file with particles and HDF5 paths (see '
                         'github.com/hep-lbdl/CaloGAN/blob/master/models/'
@@ -176,6 +179,7 @@ if __name__ == '__main__':
     save_model = parse_args.save_model
     load_weights = parse_args.load_weights
     process0 = parse_args.process0
+    nodelete = parse_args.no_delete
 
     # EV 10-Jan-2021 Adjust the learning rate
     #disc_lr = parse_args.disc_lr
@@ -599,6 +603,8 @@ if __name__ == '__main__':
         print("Using combined optimizer state from {}".format(filename))
         opt_weights = np.load(filename, allow_pickle=True)
         combined.optimizer.set_weights(opt_weights)
+        if not no_delete:
+            os.system("rm -rf *.optimizer")
 
 
     if load_weights and not(load_model):
@@ -628,6 +634,8 @@ if __name__ == '__main__':
         #latest_file = max(files, key=os.path.getctime)
         print("Using discriminator weights from {}".format(filename))
         discriminator.load_weights(filename)
+        if not no_delete:
+            os.system("rm -rf *.weights")
 
 
     # EV 10-Jan-2021: Broadcast initial variable states from rank 0 to all other processes
