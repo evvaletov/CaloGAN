@@ -23,6 +23,7 @@ from sklearn.utils import shuffle
 import sys
 import yaml
 import pickle
+import time
 
 
 if __name__ == '__main__':
@@ -68,6 +69,9 @@ def get_parser():
 
     parser.add_argument('--adam-beta', action='store', type=float, default=0.5,
                         help='Adam beta_1 parameter')
+
+    parser.add_argument('--weights-averaging-coeff', action='store', type=float, default=0.0,
+                        help='Average loaded weights with a coefficient. 0: no averaging; 1: full (simple) averaging.')
 
     parser.add_argument('--prog-bar', action='store_true',
                         help='Whether or not to use a progress bar')
@@ -184,6 +188,7 @@ if __name__ == '__main__':
     process0 = parse_args.process0
     nodelete = parse_args.no_delete
     save_all_epochs = parse_args.save_all_epochs
+    weights_averaging_coeff = parse_args.weights_averaging_coeff
 
     # EV 10-Jan-2021 Adjust the learning rate
     #disc_lr = parse_args.disc_lr
@@ -638,7 +643,46 @@ if __name__ == '__main__':
         #latest_file = max(files, key=os.path.getctime)
         print("Using discriminator weights from {}".format(filename))
         discriminator.load_weights(filename)
+
+        if weights_averaging_coff!=0.0:
+            this_generator_weights = generator.get_weights()
+            all_generator_weights = []
+            for rank in range(0,hvd.size()):
+                filename = '{0}{1:04d}_{2:03d}.weights'.format(parse_args.g_pfx,last_epoch,rank)
+                files = glob.glob(filename)
+                if len(files)==0:
+                    raise Exception("Generator weights file {} not found".format(filename))
+                generator.load_weights(filename)
+                all_generator_weights.append(generator.get_weights())
+            new_weights = list()
+            for weights_list_tuple in zip(*all_generator_weights):
+                new_weights.append([np.array(weights_).mean(axis=0) for weights_ in zip(*weights_list_tuple)])
+            weights_to_load = list()
+            for weights_list_tuple in zip(*[new_weights, this_generator_weights]):
+                weights_to_load.append([weights_averaging_coeff*np.array(weights_[0])+(1.0-weights_averaging_coeff)*np.array(weights_[1]) for weights_ in zip(*weights_list_tuple)])
+            generator.set_weights(weights_to_load)
+
+            this_discriminator_weights = discriminator.get_weights()
+            all_discriminator_weights = []
+            for rank in range(0,hvd.size()):
+                filename = '{0}{1:04d}_{2:03d}.weights'.format(parse_args.d_pfx,last_epoch,rank)
+                files = glob.glob(filename)
+                if len(files)==0:
+                    raise Exception("Generator weights file {} not found".format(filename))
+                discriminator.load_weights(filename)
+                all_discriminator_weights.append(discriminator.get_weights())
+            new_weights = list()
+            for weights_list_tuple in zip(*all_discriminator_weights):
+                new_weights.append([np.array(weights_).mean(axis=0) for weights_ in zip(*weights_list_tuple)])
+            weights_to_load = list()
+            for weights_list_tuple in zip(*[new_weights, this_discriminator_weights]):
+                weights_to_load.append([weights_averaging_coeff*np.array(weights_[0])+(1.0-weights_averaging_coeff)*np.array(weights_[1]) for weights_ in zip(*weights_list_tuple)])
+            discriminator.set_weights(weights_to_load)
+
         if not no_delete:
+            if weights_averaging_coeff!=0.0:
+                print("Sleeping 120 seconds to ensure all ranks loaded weights")
+                time.sleep(120)
             os.system("rm -rf *.weights")
 
 
