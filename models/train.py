@@ -102,6 +102,9 @@ def get_parser():
     parser.add_argument('--process0', action='store_true',
                          default=False, help='Save and load weights and optimizer states only from process 0')
 
+    parser.add_argument('--save-all-epochs', action='store_true',
+                         default=False, help='Save weights and/or optimizer states from all epochs')
+
     parser.add_argument('--no-delete', action='store_true',
                          default=False, help='Do not delete weights and optimizer states after loading them')
 
@@ -180,6 +183,7 @@ if __name__ == '__main__':
     load_weights = parse_args.load_weights
     process0 = parse_args.process0
     nodelete = parse_args.no_delete
+    save_all_epochs = parse_args.save_all_epochs
 
     # EV 10-Jan-2021 Adjust the learning rate
     #disc_lr = parse_args.disc_lr
@@ -665,7 +669,7 @@ if __name__ == '__main__':
 
         # save weights every epoch
         # EV 10-Jan-2021: this needs to done only on one process. Otherwise each worker is writing it.
-        if (hvd.rank()==0) or (not process0):
+        if ((hvd.rank()==0) or (not process0)) and (save_all_epochs or epoch==nb_epochs+last_epoch):
             generator.save_weights('{0}{1:04d}_{2:03d}.weights'.format(parse_args.g_pfx, epoch, hvd.rank()),
                                overwrite=True)
 
