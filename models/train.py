@@ -613,6 +613,8 @@ if __name__ == '__main__':
         opt_weights = np.load(filename, allow_pickle=True)
         combined.optimizer.set_weights(opt_weights)
         if not no_delete:
+            print("Sleeping 120 seconds...")
+            time.sleep(120)
             os.system("rm -rf *.optimizer")
 
 
@@ -680,9 +682,8 @@ if __name__ == '__main__':
             discriminator.set_weights(weights_to_load)
 
         if not no_delete:
-            if weights_averaging_coeff!=0.0:
-                print("Sleeping 120 seconds to ensure all ranks loaded weights")
-                time.sleep(120)
+            print("Sleeping 120 seconds...")
+            time.sleep(120)
             os.system("rm -rf *.weights")
 
 
