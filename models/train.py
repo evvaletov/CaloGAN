@@ -186,7 +186,7 @@ if __name__ == '__main__':
     save_model = parse_args.save_model
     load_weights = parse_args.load_weights
     process0 = parse_args.process0
-    nodelete = parse_args.no_delete
+    no_delete = parse_args.no_delete
     save_all_epochs = parse_args.save_all_epochs
     weights_averaging_coeff = parse_args.weights_averaging_coeff
 
@@ -646,7 +646,7 @@ if __name__ == '__main__':
         print("Using discriminator weights from {}".format(filename))
         discriminator.load_weights(filename)
 
-        if weights_averaging_coff!=0.0:
+        if weights_averaging_coeff!=0.0:
             this_generator_weights = generator.get_weights()
             all_generator_weights = []
             for rank in range(0,hvd.size()):
