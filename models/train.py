@@ -112,6 +112,9 @@ def get_parser():
     parser.add_argument('--no-delete', action='store_true',
                          default=False, help='Do not delete weights and optimizer states after loading them')
 
+    parser.add_argument('--last-activation', action='store', type=str, default='none',
+                         help='Last activation function in the generator (none, softplus, leakyrelu)')
+
     parser.add_argument('dataset', action='store', type=str,
                         help='yaml file with particles and HDF5 paths (see '
                         'github.com/hep-lbdl/CaloGAN/blob/master/models/'
@@ -187,6 +190,7 @@ if __name__ == '__main__':
     load_weights = parse_args.load_weights
     process0 = parse_args.process0
     no_delete = parse_args.no_delete
+    last_activation = parse_args.last_activation
     save_all_epochs = parse_args.save_all_epochs
     weights_averaging_coeff = parse_args.weights_averaging_coeff
 
@@ -408,9 +412,9 @@ if __name__ == '__main__':
 
     # each of these builds a LAGAN-inspired [arXiv/1701.05927] component with
     # linear last layer
-    img_layer0 = build_generator(h, 3, 96)
-    img_layer1 = build_generator(h, 12, 12)
-    img_layer2 = build_generator(h, 12, 6)
+    img_layer0 = build_generator(h, 3, 96, last_activation=last_activation)
+    img_layer1 = build_generator(h, 12, 12, last_activation=last_activation)
+    img_layer2 = build_generator(h, 12, 6, last_activation=last_activation)
 
     if not no_attn:
 

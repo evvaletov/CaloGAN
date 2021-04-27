@@ -26,7 +26,7 @@ def sparse_softmax(x):
     return e / s
 
 
-def build_generator(x, nb_rows, nb_cols):
+def build_generator(x, nb_rows, nb_cols, last_activation = 'none'):
     """ Generator sub-component for the CaloGAN
 
     Args:
@@ -52,6 +52,12 @@ def build_generator(x, nb_rows, nb_cols):
 
     x = LocallyConnected2D(1, (2, 2), use_bias=False,
                            kernel_initializer='glorot_normal')(x)
+
+    # EV 26-Apr-2021: add softplus activation function
+    if last_activation == 'softplus':
+      x = Activation("softplus")(x)
+    if last_activation == 'leakyrelu':
+      x = LeakyReLU()(x)
 
     return x
 
