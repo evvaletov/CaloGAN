@@ -115,6 +115,9 @@ def get_parser():
     parser.add_argument('--last-activation', action='store', type=str, default='none',
                          help='Last activation function in the generator (none, softplus, leakyrelu)')
 
+    parser.add_argument('--maintain-gen-loss-below', action='store', type=float, default=1000.0,
+                         help='Maintain the generator loss below the specified value')
+
     parser.add_argument('dataset', action='store', type=str,
                         help='yaml file with particles and HDF5 paths (see '
                         'github.com/hep-lbdl/CaloGAN/blob/master/models/'
@@ -191,6 +194,7 @@ if __name__ == '__main__':
     process0 = parse_args.process0
     no_delete = parse_args.no_delete
     last_activation = parse_args.last_activation
+    maintain_gen_loss_below = parse_args.maintain_gen_loss_below
     save_all_epochs = parse_args.save_all_epochs
     weights_averaging_coeff = parse_args.weights_averaging_coeff
 
@@ -459,6 +463,9 @@ if __name__ == '__main__':
         loss=discriminator_losses
     )
 
+    last_epoch_gen_loss = None
+    last_epoch_disc_loss = None
+
     def train_gan(epoch, nb_batches):
 
         if verbose:
@@ -511,20 +518,22 @@ if __name__ == '__main__':
                 disc_outputs_fake.append(bit_flip(sampled_labels, 0.3))
                 loss_weights.append(0.2 * np.ones(batch_size))
 
-            real_batch_loss = discriminator.train_on_batch(
-                [image_batch_1, image_batch_2, image_batch_3, energy_batch],
-                disc_outputs_real,
-                loss_weights
-            )
+            if (last_epoch_gen_loss is None) or (last_epoch_gen_loss < maintain_gen_loss_below) or (epoch < 10):
 
-            # note that a given batch should have either *only* real or *only* fake,
-            # as we have both minibatch discrimination and batch normalization, both
-            # of which rely on batch level stats
-            fake_batch_loss = discriminator.train_on_batch(
-                generated_images + [sampled_energies],
-                disc_outputs_fake,
-                loss_weights
-            )
+              real_batch_loss = discriminator.train_on_batch(
+                  [image_batch_1, image_batch_2, image_batch_3, energy_batch],
+                  disc_outputs_real,
+                  loss_weights
+              )
+
+              # note that a given batch should have either *only* real or *only* fake,
+              # as we have both minibatch discrimination and batch normalization, both
+              # of which rely on batch level stats
+              fake_batch_loss = discriminator.train_on_batch(
+                  generated_images + [sampled_energies],
+                  disc_outputs_fake,
+                  loss_weights
+              )
 
             epoch_disc_loss.append(
                 (np.array(fake_batch_loss) + np.array(real_batch_loss)) / 2)
@@ -562,6 +571,8 @@ if __name__ == '__main__':
             epoch + 1, np.mean(epoch_gen_loss, axis=0)))
         logger.info('Epoch {:3d} Discriminator loss: {}'.format(
             epoch + 1, np.mean(epoch_disc_loss, axis=0)))
+        last_epoch_disc_loss = np.mean(epoch_disc_loss, axis=0)[0]
+        last_epoch_gen_lss = np.mean(epoch_gen_loss, axis=0)[0]
 
     last_epoch = -1
     rank_to_load = 0 if process0 else hvd.rank()
