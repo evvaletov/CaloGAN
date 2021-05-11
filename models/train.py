@@ -118,6 +118,9 @@ def get_parser():
     parser.add_argument('--maintain-gen-loss-below', action='store', type=float, default=1000.0,
                          help='Maintain the generator loss below the specified value')
 
+    parser.add_argument('--train-gen-per-epoch', action='store', type=int, default=1,
+                         help='Train the generator n times per epoch')
+
     parser.add_argument('dataset', action='store', type=str,
                         help='yaml file with particles and HDF5 paths (see '
                         'github.com/hep-lbdl/CaloGAN/blob/master/models/'
@@ -195,6 +198,7 @@ if __name__ == '__main__':
     no_delete = parse_args.no_delete
     last_activation = parse_args.last_activation
     maintain_gen_loss_below = parse_args.maintain_gen_loss_below
+    train_gen_per_epoch = parse_args.train_gen_per_epoch
     save_all_epochs = parse_args.save_all_epochs
     weights_averaging_coeff = parse_args.weights_averaging_coeff
 
@@ -547,7 +551,7 @@ if __name__ == '__main__':
 
             # we do this twice simply to match the number of batches per epoch used to
             # train the discriminator
-            for _ in range(2):
+            for _ in range(2*train_gen_per_epoch):
                 noise = np.random.normal(0, 1, (batch_size, latent_size))
 
                 sampled_energies = np.random.uniform(1, 100, (batch_size, 1))
